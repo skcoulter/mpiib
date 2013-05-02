@@ -1,0 +1,4 @@
+nohup atc_testMgr -u cja -C config_cj -D 100 -w 1 &
+
+# This command wakes up every 100 minutes and checks a watermark of 1 job.
+# If less than on job in the queue - submit another set
