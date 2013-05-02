@@ -1,0 +1,44 @@
+# Test suite config file for submitting jobs/tests
+# ====================================
+#
+# Comments, ignore lines that begin with a pound sign (#)
+# The following is the format of the test selection lines in this file:
+#
+   # required fields:
+   #   name (test name) :: Matches directory name of test or job. MUST NOT contain a double
+   #                       underline "__" nor a period "."
+   #   pes              :: Number of cpu's or cores needed
+   #   nodes            :: Number of nodes needed
+   #   tl (time_limit)  :: hh:mm:ss or an integer value of seconds to set the run time limit
+   #
+
+   # optional fields:
+   #   nl (node_list)   :: quoted, comma-delimited list of nodes. Default is let Moab select nodes.
+   #                       Otherwise, use a "-" to target nodes based on least used algorithm,
+   #                       called tiling across nodes.
+   #                       Must target nodes within the segment ("-u" parameter) selected.
+   #   perc (percent)   :: integer indicating percentage of time to run this test relative to
+   #                       other tests listed. The algorithm simply adds up the time_limit of each
+   #                       test line, normalizes all the perspective runs times, then submits multiple
+   #                       instances of eachtest accordingly.  This works best when applied
+   #                       to only one test line as it does not factor in perc for other test cases.
+   #   exec             :: test executable. Overrides CMD variable in test specific config
+   #                       file (gzconfig) with this executable to call.
+   #   pl (test param list):: quoted string. set to TEST_PARAMS ENV variable which overrides test
+   #                       specific setting in config file (gzconfig).
+   #   margs (msub args) :: arbitrary quoted string added on to msub call
+
+name:=ibperf_ring nodes:=4 pes:=4 tl:=00:10:00
+name:=ibperf_ring nodes:=32 pes:=32 tl:=00:30:00
+name:=ibperf_ring nodes:=128 pes:=128 tl:=01:00:00
+name:=ibperf_ring nodes:=256 pes:=256 tl:=01:00:00
+
+name:=ibperf_seq nodes:=4 pes:=4 tl:=00:10:00
+name:=ibperf_seq nodes:=32 pes:=32 tl:=00:30:00
+name:=ibperf_seq nodes:=128 pes:=128 tl:=01:00:00
+name:=ibperf_seq nodes:=256 pes:=256 tl:=01:00:00
+
+name:=ibperf_agg nodes:=4 pes:=4 tl:=00:10:00
+name:=ibperf_agg nodes:=32 pes:=32 tl:=00:30:00
+name:=ibperf_agg nodes:=128 pes:=128 tl:=01:00:00
+name:=ibperf_agg nodes:=256 pes:=256 tl:=01:00:00
