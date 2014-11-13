@@ -1,25 +1,24 @@
 #!/bin/tcsh
 
-# This file is used to call and run tests
-# It must be tcsh (boo)
+# This file is an example wrapper script for what must be used to
+# call your test. It may be renamed or you can use your own script.
 # However, the CMD variable in the config file must be set to the name of
 # either this file or the new file that will be called.
 
 setenv OMPI_MCA_rmaps_base_pernode 1
 
 module load gcc
-module load openmpi/1.6.3
+module load openmpi
 
 # place any pre processing commands here, if needed
 
-/bin/rm /usr/projects/systems/skc/cj_gazebo/test_exec/ibperf_agg/src/nodefile
-
+#  ** Example call to run the test
 # NOTE: every variable in the config file is available as an
 # environmental variable.
 # Please DO NOT redirect STDIO or STDERR from the execution command
 # or use "time -p" as this will skew the timing results. 
 
-mpirun -np ${GZ_NPES} ${GZ_RUNHOME}/ibperf_agg
+mpirun -np ${GZ_NPES} ${GZ_RUNHOME}/ibperf_seq ${GZ_TEST_PARAMS}
 
 # place any post processing commands here, if needed
 
