@@ -2,10 +2,10 @@
  ** IB Performance testing
  ** FILE: ibperf_ring.c
  ** DESCRIPTION: This program runs client/server IB testing on  
- ** all the nodes in the job allocation.  Bidirectional
+ ** all the nodes in the job allocation using a ring algorithm
+ ** thereby getting bi-directional bw numbers.
  **
  **  AUTHOR: Susan Coulter
- **  DATE: 2013-02-13
  ** --------------------------------------------------------------- */
 
 #include "mpi.h"
@@ -14,8 +14,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <float.h> 
-#define NODEFILE      "/usr/projects/systems/skc/cj_gazebo/test_exec/ibperf_ring/src/nodefile"
-#define MAX_NODES     10000
+#include <sys/time.h> 
+#define BW_COLUMN	"4"
+#define BW_MSG_SIZE	"65536"
+#define DEFAULT_TEST	"ib_read_bw"
+#define LAT_COLUMN	"5"
+#define LAT_MSG_SIZE	"8"
+#define MAX_NODES	10000
+#define MAX_ARGS	3
+#define NODEFILE	"/yellow/users/markus/mu_gazebo/test_exec/ibperf_ring/src/nodefile"
+#define READ_NUM_RUNS	"1000"
+#define WRITE_NUM_RUNS	"5000"
 
 #define MPICHK(_ret_)                                                        \
 {if (MPI_SUCCESS != (_ret_))                                                 \
@@ -52,28 +61,76 @@ char *argv[];
    FILE *fpnode;
    FILE *fptest;
 
-   char cmd[15], host[10], input[10], result[80], test[50];
+   char cmd[40], column[2], host[10], input[10], msg_size[8], num_runs[8], nodefile[80], result[80], rm[100], test[50];
    int port=18515;
-   int dstport, dstrank, idx, myport, myrank, numranks, rc;
+   int dstport, dstrank, i, idx, myport, myrank, numranks, rc;
    double *gbuf, *gp;
    double avg, num, tot, EndTime, RunTime, StartTime;
+
+   struct timeval tv;
 
    MPI_Status status;
    MPI_Request sndrq;
 
-/* can override default ib test */
+/* setup test - assume default   */
+/*   if args, set as appropriate */
 
-   if ( argc == 2 ) {
-     strncpy(cmd, argv[2], sizeof cmd);
-   } else {
-     strncpy(cmd, "ib_read_bw", sizeof cmd);
-   }
+   strncpy(cmd, DEFAULT_TEST, sizeof cmd);
+   strcpy(column, "$");
+   if (argc > 1) {
+      strncpy(cmd, argv[1], sizeof cmd);
+      if (strstr(cmd,"ib_read")) 
+        strncpy(num_runs, READ_NUM_RUNS, sizeof num_runs);
+      if (strstr(cmd,"ib_write")) 
+        strncpy(num_runs, WRITE_NUM_RUNS, sizeof num_runs);
+         
+      if (strstr(cmd,"bw")) { 
+   	strcat(column, BW_COLUMN);
+   	strncpy(msg_size, BW_MSG_SIZE, sizeof msg_size);
+      }
+      if (strstr(cmd,"lat")) { 
+   	strcat(column, LAT_COLUMN);
+	strncpy(msg_size, LAT_MSG_SIZE, sizeof msg_size);
+      }
+      
+      if (!(!strcmp(cmd,"ib_read_bw") || !strcmp(cmd,"ib_write_bw") || !strcmp(cmd,"ib_read_lat") || !strcmp(cmd,"ib_write_lat"))) {
+          strncpy(exitmsg, "Unknown test requested, stopping...", sizeof exitmsg);
+          bad_exit(exitmsg);
+      }
+
+      for (idx=2; idx < argc; idx++) {
+        if (strlen(argv[idx]) > 7) {
+          strncpy(exitmsg, "Message size or number of runs > 7 digits, stopping...", sizeof exitmsg);
+          bad_exit(exitmsg);
+        }
+        if (idx==2) strncpy(msg_size, argv[idx], sizeof msg_size);
+        if (idx==3) strncpy(num_runs, argv[idx], sizeof num_runs);
+        if (idx>MAX_ARGS) {
+          strncpy(exitmsg, "Too many parameters, stopping...", sizeof exitmsg);
+          bad_exit(exitmsg);
+        }
+      }         
+    } else {
+      strncpy(msg_size, BW_MSG_SIZE, sizeof msg_size);
+      strncpy(num_runs, READ_NUM_RUNS, sizeof num_runs);
+      strcat(column, BW_COLUMN);
+    }
+
+/* build full test command */
+
+   strcat(cmd, " -s ");
+   strncat(cmd, msg_size, sizeof msg_size);
+   strcat(cmd, " -n ");
+   strncat(cmd, num_runs, sizeof num_runs);
  
    MPICHK(MPI_Init(&argc,&argv));
    MPICHK(MPI_Comm_size(MPI_COMM_WORLD,&numranks));
    MPICHK(MPI_Comm_rank(MPI_COMM_WORLD,&myrank));
 
 /* run specific variables */
+
+
+   sprintf(nodefile, "%s.%s", NODEFILE, getenv("SLURM_JOBID"));
 
    string nodes[numranks];
 
@@ -91,7 +148,7 @@ char *argv[];
    while (idx <= numranks) {
          MPI_Barrier(MPI_COMM_WORLD);
       if (idx == 0 && myrank == 0) {
-         if ((fpnode=fopen(NODEFILE,"w"))==NULL) {
+         if ((fpnode=fopen(nodefile,"w"))==NULL) {
            strncpy(exitmsg, "Failure opening NODEFILE for WRITE", sizeof exitmsg);
            bad_exit(exitmsg);
          }
@@ -101,7 +158,7 @@ char *argv[];
          MPI_Barrier(MPI_COMM_WORLD);
       } else if (myrank == idx) {
          MPI_Barrier(MPI_COMM_WORLD);
-         if ((fpnode=fopen(NODEFILE,"a"))==NULL) {
+         if ((fpnode=fopen(nodefile,"a"))==NULL) {
            strncpy(exitmsg, "Failure opening NODEFILE for WRITE", sizeof exitmsg);
            bad_exit(exitmsg);
          }
@@ -119,7 +176,7 @@ char *argv[];
 
 /* everybody reads the node file */
 
-   if ((fpnode=fopen(NODEFILE,"r"))==NULL) {
+   if ((fpnode=fopen(nodefile,"r"))==NULL) {
       strncpy(exitmsg, "Failure opening nodefile for READ", sizeof exitmsg);
       bad_exit(exitmsg);
    }
@@ -156,15 +213,17 @@ char *argv[];
 
 /* run my client */
 
-   sprintf(test,"%s -p %i %s | /bin/grep 65536 | /bin/sed 's/65536.* //'", cmd, dstport, nodes[dstrank]);
+   sprintf(test,"%s -p %i %s | /bin/grep %s | /bin/grep %s | /bin/grep -v QPN | /bin/awk '{print %s}'", cmd, dstport, nodes[dstrank], msg_size, num_runs, column);
+
    if ((fptest=popen(test,"r")) == NULL) {
       strncpy(exitmsg, "failed to open pipe to run test", sizeof exitmsg);
       bad_exit(exitmsg);
    }
 
+   cmd[strcspn(cmd," ")] = '\0';
    fgets(result, 80, fptest);
    result[strlen(result)-1] = '\0';
-   printf("<td> From_%s_to_%s %s\n",nodes[myrank], nodes[dstrank], result);
+   printf("<td> %s_%s_%s_From_%s_to_%s %s\n", cmd, num_runs, msg_size, nodes[myrank], nodes[dstrank], result);
    num=0;
    num = atof(result);
 
@@ -190,11 +249,14 @@ char *argv[];
          gp++;
       }
       avg = tot / idx;
-      printf("<td> RingAvg_%iRanks %#.2f\n", numranks, avg);
+      printf("<td> %s_%s_%s_RingAvg_%iRanks %#.2f\n", cmd, num_runs, msg_size, numranks, avg);
       printf ("Ring run time %f\n", RunTime);
       printf("<results> PASS Job concluded successfully\n");
    }
 
+   sprintf(rm, "/bin/rm -f %s", nodefile);
+   system(rm);
+
    MPI_Finalize();
-   exit(0);
+/*   exit(0); */
 }
