@@ -3,7 +3,7 @@ mpiib
 
 This repo contains the code and gazebo-framework launch files to run native IB verbs tests.
 
-Gazebo is a LANL-produced test framework.
+Gazebo is a LANL-produced test framework found at https://github.com/losalamos/Gazebo
 
   ibperf_agg, ring and seq:
 
