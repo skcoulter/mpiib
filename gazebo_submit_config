@@ -28,17 +28,12 @@
    #                       specific setting in config file (gzconfig).
    #   margs (msub args) :: arbitrary quoted string added on to msub call
 
-name:=ibperf_ring nodes:=4 pes:=4 tl:=00:10:00
-name:=ibperf_ring nodes:=32 pes:=32 tl:=00:30:00
-name:=ibperf_ring nodes:=128 pes:=128 tl:=01:00:00
-name:=ibperf_ring nodes:=256 pes:=256 tl:=01:00:00
+name:=ibperf_ring nodes:=32 pes:=32 tl:=00:30:00 pl:="ib_write_bw"
+name:=ibperf_ring nodes:=128 pes:=128 tl:=01:00:00 pl:="ib_write_bw"
 
-name:=ibperf_seq nodes:=4 pes:=4 tl:=00:10:00
-name:=ibperf_seq nodes:=32 pes:=32 tl:=00:30:00
-name:=ibperf_seq nodes:=128 pes:=128 tl:=01:00:00
-name:=ibperf_seq nodes:=256 pes:=256 tl:=01:00:00
+name:=ibperf_seq nodes:=32 pes:=32 tl:=00:30:00 pl:="ib_write_bw"
+name:=ibperf_seq nodes:=128 pes:=128 tl:=02:00:00 pl:="ib_write_bw"
 
-name:=ibperf_agg nodes:=4 pes:=4 tl:=00:10:00
-name:=ibperf_agg nodes:=32 pes:=32 tl:=00:30:00
-name:=ibperf_agg nodes:=128 pes:=128 tl:=01:00:00
-name:=ibperf_agg nodes:=256 pes:=256 tl:=01:00:00
+name:=ibperf_agg nodes:=32 pes:=32 tl:=00:30:00 pl:="ib_write_bw"
+name:=ibperf_agg nodes:=128 pes:=128 tl:=02:00:00 pl:="ib_write_bw"
+
