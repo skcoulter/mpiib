@@ -9,7 +9,11 @@ Gazebo is a LANL-produced test framework.
 
   These tests are launched via MPI so that the tests can be scheduled and run via our automated scheduler.
   This method provides a real world view of what our users see.
-  While MPI is used to set up and launch the tests, the results are purely native IB performance WiTHOUT the MPI layer.
+  While MPI is used to set up and launch the tests, the results are purely native IB performance WiTHOUT the MPI layer. 
+  
+  Each test can take up to 3 parameters, test, message size and number of iterations.
+  If no test is specified, the default is ib_read_bw.
+  The message size and number of iterations use the defaults specified for the given tests.
 
 mpiring:
 
