@@ -7,21 +7,6 @@
  ** same single node; for each node in the allocation.
  **
  **  AUTHOR: Susan Coulter
- **  Copyright (C) 2014  Susan Coulter
- **
- ** Unless otherwise indicated, this information has been authored by an employee
- ** or employees of the Los Alamos National Security, LLC (LANS), operator of the
- ** Los Alamos National Laboratory under Contract No.  DE-AC52-06NA25396 with the
- ** U.S. Department of Energy.  The U.S. Government has rights to use, reproduce,
- ** and distribute this information. The public may copy and use this information
- ** without charge, provided that this Notice and any statement of authorship are
- ** reproduced on all copies. Neither the Government nor LANS makes any warranty,
- ** express or implied, or assumes any liability or responsibility for the use of
- ** this information.
- ** 
- ** This program has been approved for release from LANS by LA-CC Number 10-066,
- ** being part of the HPC Operational Suite.
- ** 
  ** --------------------------------------------------------------- */
 
 #include "mpi.h"
@@ -29,25 +14,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <float.h> 
-#include <sys/time.h> 
-#define BW_COLUMN	"4"
-#define BW_MSG_SIZE	"65536"
-#define DEFAULT_TEST	"ib_read_bw"
-#define LAT_COLUMN	"5"
-#define LAT_MSG_SIZE	"8"
-#define MAX_NODES	10000
-#define MAX_ARGS	3
-#define NODEFILE	"/yellow/users/markus/mu_gazebo/test_exec/ibperf_ring/src/nodefile"
-#define READ_NUM_RUNS	"1000"
-#define WRITE_NUM_RUNS	"5000"
+#include <time.h> 
+#include <unistd.h> 
+#define BW_COLUMN		"4"
+#define BW_MSG_SIZE		"65536"
+#define BW_TITLE                "BW"
+#define BW_UNITS                "MB/s"
+#define COMM_PATTERN		"Aggregate"
+#define DEFAULT_TEST		"ib_read_bw"
+#define LAT_COLUMN		"5"
+#define LAT_MSG_SIZE		"8"
+#define LAT_TITLE               "Lat"
+#define LAT_UNITS               "usec"
+#define MAX_NODES		10000
+#define MAX_ARGS		3
+#define NODEFILE		"/turquoise/usr/projects/systems/testjobs/nodefiles/nodefile"
+#define READ_SEND_NUM_RUNS	"1000"
+#define WRITE_NUM_RUNS		"5000"
 
 #define MPICHK(_ret_)                                                        \
 {if (MPI_SUCCESS != (_ret_))                                                 \
 {                                                                            \
    fprintf(stderr, "mpi success not returned...\n");                         \
    fflush(stderr);                                                           \
-   printf("<results> FAIL Job failed MPICHK\n");                             \
    exit(EXIT_FAILURE);                                                       \
 }}
 
@@ -64,7 +53,6 @@ void bad_exit(char *msg)
 /* write error message */
 
   fprintf(stderr, "  Fatal Error: %s\n", msg);
-  printf("<results> FAIL %s\n", msg);
   exit(EXIT_FAILURE);
 
 }
@@ -73,21 +61,31 @@ int main(argc,argv)
 int argc;
 char *argv[];
 {
+   FILE *fpcluster;
+   FILE *fpdate;
    FILE *fphost;
    FILE *fpnode;
    FILE *fptest;
 
-   char cmd[40], column[2], host[10], input[10], msg_size[8], num_runs[8], nodefile[80], result[80], rm[100], test[50];
+   char cluster[12], cmd[50], column[3], date[30], host[10], input[10], jobid[10], logmsg[200], msg_size[8], num_runs[8];
+   char nodefile[80], outfile[80], result[80], rm[100], rundata[80], testbase[15], test[125], title[4], today[10], units[5];
    double *gbuf, *gp;
    double avgtot, avg, num, rfrom, EndTime, RunTime, StartTime;
    int dfltport=18515;
    int client, clnport, eidx, i, ibx, idx, ridx;
    int myrank, numranks, rc, server, svrport;
 
-   struct timeval tv;
+   time_t timet;
+   struct tm tm_struct;
 
    MPI_Status status;
    MPI_Request sndrq;
+
+/* get today */
+
+   time(&timet);
+   tm_struct = *localtime(&timet);
+   strftime(today, sizeof(today), "%Y%m%d", &tm_struct);
 
 /* setup test - assume default   */
 /*   if args, set as appropriate */
@@ -96,24 +94,30 @@ char *argv[];
    strcpy(column, "$");
    if (argc > 1) {
       strncpy(cmd, argv[1], sizeof cmd);
-      if (strstr(cmd,"ib_read"))
-        strncpy(num_runs, READ_NUM_RUNS, sizeof num_runs);
+      if (strstr(cmd,"ib_read") || strstr(cmd,"ib_send"))
+        strncpy(num_runs, READ_SEND_NUM_RUNS, sizeof num_runs);
       if (strstr(cmd,"ib_write"))
         strncpy(num_runs, WRITE_NUM_RUNS, sizeof num_runs);
 
       if (strstr(cmd,"bw")) {
         strcat(column, BW_COLUMN);
         strncpy(msg_size, BW_MSG_SIZE, sizeof msg_size);
+        strncpy(title, BW_TITLE, sizeof title);
+        strncpy(units, BW_UNITS, sizeof units);
       }
       if (strstr(cmd,"lat")) {
         strcat(column, LAT_COLUMN);
         strncpy(msg_size, LAT_MSG_SIZE, sizeof msg_size);
+        strncpy(title, LAT_TITLE, sizeof title);
+        strncpy(units, LAT_UNITS, sizeof units);
       }
 
-      if (!(!strcmp(cmd,"ib_read_bw") || !strcmp(cmd,"ib_write_bw") || !strcmp(cmd,"ib_read_lat") || !strcmp(cmd,"ib_write_lat"))) {
+      if (!(!strcmp(cmd,"ib_read_bw") || !strcmp(cmd,"ib_write_bw")  || !strcmp(cmd,"ib_send_bw") || !strcmp(cmd,"ib_read_lat") || !strcmp(cmd,"ib_write_lat") || !strcmp(cmd,"ib_send_lat"))) {
           strncpy(exitmsg, "Unknown test requested, stopping...", sizeof exitmsg);
           bad_exit(exitmsg);
       }
+
+/* setup the rest of the test command */
 
       for (idx=2; idx < argc; idx++) {
         if (strlen(argv[idx]) > 7) {
@@ -129,12 +133,14 @@ char *argv[];
       }
     } else {
       strncpy(msg_size, BW_MSG_SIZE, sizeof msg_size);
-      strncpy(num_runs, READ_NUM_RUNS, sizeof num_runs);
+      strncpy(num_runs, READ_SEND_NUM_RUNS, sizeof num_runs);
       strcat(column, BW_COLUMN);
     }
 
 /* build full test command */
+/* grab base test name for later */ 
 
+   strncpy(testbase, cmd, sizeof testbase);
    strcat(cmd, " -s ");
    strncat(cmd, msg_size, sizeof msg_size);
    strcat(cmd, " -n ");
@@ -146,7 +152,22 @@ char *argv[];
 
 /* run specific variables */
    
+   sprintf(jobid, "%s", getenv("SLURM_JOBID"));
    sprintf(nodefile, "%s.%s", NODEFILE, getenv("SLURM_JOBID"));
+
+   if ((fpcluster=popen("/usr/projects/hpcsoft/utilities/bin/sys_name","r")) == NULL) {
+      strncpy(exitmsg, "failed to get cluster name", sizeof exitmsg);
+      bad_exit(exitmsg);
+   }
+   fgets(cluster, 12, fpcluster);
+   cluster[strlen(cluster)-1] = '\0';
+
+   if ((fpdate=popen("/bin/date +\"%Y-%m-%d %T.%6N\"","r")) == NULL) {
+      strncpy(exitmsg, "failed to get date", sizeof exitmsg);
+      bad_exit(exitmsg);
+   }
+   fgets(date, 30, fpdate);
+   date[strlen(date)-1] = '\0';
 
    double rto[numranks],tot[numranks];
    string nodes[numranks];
@@ -199,7 +220,7 @@ char *argv[];
 /* Start */
 
    if (myrank == 0)
-      printf("Running %s test on %d ranks\n", cmd, numranks);
+      sprintf(rundata, "%s Cluster=%s JobId=%s Test=%s Pattern=%s Ranks=%d MsgSize=%s Iterations=%s", date, cluster, jobid, testbase, COMM_PATTERN, numranks, msg_size, num_runs);
 
 /* everybody reads the node file */
 
@@ -281,16 +302,6 @@ char *argv[];
 
    rfrom = rfrom / (numranks-1);
 
-/* DEBUG
-
-   printf("\nRank %i reporting: Avgerage of %#.2f\n\n", myrank, rfrom);
-   idx=0;
-   while (idx < numranks) {
-      printf("Rank %i reporting rto[%i] = %#.2f\n", myrank, idx, rto[idx]);
-      idx++;
-   }
-*/
-
 /* get and print client data */
 
    if (myrank == 0) 
@@ -303,7 +314,8 @@ char *argv[];
       idx=0;
       gp = gbuf;
       while (idx < numranks) {
-         printf("<td> %s_%s_%s_AggAvgFrom_%s_%iRanks %#.2f\n", cmd, num_runs, msg_size, nodes[idx], numranks, *gp); 
+         sprintf(logmsg, "logger -t perftest %s FromNode=%s Avg%s=%#.2f %s\n", rundata, nodes[idx], title, *gp, units);
+         system(logmsg);
          avgtot = avgtot + *gp;
          idx++;
          gp++;
@@ -336,15 +348,18 @@ char *argv[];
 
       idx=0;
       while (idx < numranks) {
-         printf("<td> %s_%s_%s_AggAvgTo_%s_%iRanks %#.2f\n", cmd, num_runs, msg_size, nodes[idx], numranks, tot[idx]/(numranks-1));
+         sprintf(logmsg, "logger -t perftest %s ToNode=%s Avg%s=%#.2f %s\n", rundata, nodes[idx], title, tot[idx]/(numranks-1), units);
+         system(logmsg);
          idx++;
       }
 
       avg = avgtot / ((numranks*(numranks-1)) + numranks);
-      printf("<td> %s_%s_%s_AggAvgInd_%iRanks %#.2f\n", cmd, num_runs, msg_size, numranks, avg);
-      printf("<td> %s_%s_%s_AggAvgTot_%iRanks %#.2f\n", cmd, num_runs, msg_size, numranks, avg * (numranks-1));
-      printf("Aggregate run time %f\n", RunTime);
-      printf("<results> PASS Job concluded successfully\n");
+      sprintf(logmsg, "logger -t perftest %s IndAvg%s=%#.2f %s\n", rundata, title, avg, units);
+      system(logmsg);
+      sprintf(logmsg, "logger -t perftest %s FullAvg%s=%#.2f %s\n", rundata, title, avg * (numranks-1), units);
+      system(logmsg);
+      sprintf(logmsg, "logger -t perftest %s Runtime=%f secs\n", rundata, RunTime);
+      system(logmsg);
 
       sprintf(rm, "/bin/rm -f %s", nodefile);
       system(rm);

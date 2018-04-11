@@ -27,8 +27,7 @@
 #define LAT_UNITS               "usec"
 #define MAX_NODES		10000
 #define MAX_ARGS		3
-#define NODEFILE		"/yellow/usr/projects/hpc3_infrastructure/testjobs/nodefiles/nodefile"
-#define OUTFILE                 "/yellow/usr/projects/splunk/results/ibperf/perftest"
+#define NODEFILE		"/turquoise/usr/projects/systems/testjobs/nodefiles/nodefile"
 #define READ_SEND_NUM_RUNS	"1000"
 #define WRITE_NUM_RUNS		"5000"
 
@@ -65,7 +64,6 @@ char *argv[];
    FILE *fpdate;
    FILE *fphost;
    FILE *fpnode;
-   FILE *fpout;
    FILE *fptest;
 
    char cluster[12], cmd[50], column[3], date[30], host[10], input[10], jobid[10], logmsg[200], msg_size[8], num_runs[8];
@@ -86,14 +84,6 @@ char *argv[];
    time(&timet);
    tm_struct = *localtime(&timet);
    strftime(today, sizeof(today), "%Y%m%d", &tm_struct);
-   sprintf(outfile, "%s.%s", OUTFILE, today);
-
-/* open output file */
-
-   if ((fpout=fopen(outfile,"a"))==NULL) {
-     strncpy(exitmsg, "Failure opening OUTFILE for WRITE", sizeof exitmsg);
-     bad_exit(exitmsg);
-   }
 
 /* setup test - assume default   */
 /*   if args, set as appropriate */
